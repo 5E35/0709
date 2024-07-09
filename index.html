@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>質問サイト</title>
+    <!-- Firebase JavaScript SDK -->
+    <script type="module">
+        // Firebaseの設定
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.4.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, updateDoc, doc, query, where } from "https://www.gstatic.com/firebasejs/9.4.0/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_AUTH_DOMAIN",
+            projectId: "YOUR_PROJECT_ID",
+            storageBucket: "YOUR_STORAGE_BUCKET",
+            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+            appId: "YOUR_APP_ID"
+        };
+
+        // Firebase初期化
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+
+        // ページの表示を切り替える関数
+        window.showPage = function(pageId) {
+            document.querySelectorAll('.page').forEach(page => page.style.display = 'none');
+            document.getElementById(pageId).style.display = 'block';
+        }
+
+        // 質問をFirestoreに保存する関数
+        window.submitQuestion = async function(event) {
+            event.preventDefault();
+            const grade = document.getElementById('grade').value;
+            const department = document.getElementById('department').value;
+            const subject = document.getElementById('subject').value;
+            const question = document.getElementById('question').value;
+
+            try {
+                await addDoc(collection(db, 'questions'), {
+                    grade,
+                    department,
+                    subject,
+                    question,
+                    answered: false,
+                    answer: ''
+                });
+
+                document.getElementById('askForm').reset(); // フォームをリセット
+                showPage('homePage'); // ホームページに移動
+                loadAnsweredQuestions(); // 回答済みの質問を更新
+            } catch (error) {
+                console.error("Error adding document: ", error);
+            }
+        }
+
+        // Firestoreから回答済み質問を読み込む関数
+        window.loadAnsweredQuestions = async function() {
+            const answeredQuestionsList = document.getElementById('answeredQuestionsList');
+            answeredQuestionsList.innerHTML = '';
+
+            try {
+                const querySnapshot = await getDocs(query(collection(db, 'questions'), where('answered', '==', true)));
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const listItem = document.createElement('li');
+                    listItem.textContent = `${data.question} - ${data.answer}`;
+                    answeredQuestionsList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error("Error getting documents: ", error);
+            }
+        }
+
+        // Firestoreから未回答の質問を読み込む関数
+        window.loadUnansweredQuestions = async function() {
+            const unansweredQuestionsList = document.getElementById('unansweredQuestionsList');
+            unansweredQuestionsList.innerHTML = '';
+
+            try {
+                const querySnapshot = await getDocs(query(collection(db, 'questions'), where('answered', '==', false)));
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    const listItem = document.createElement('li');
+                    listItem.textContent = data.question;
+                    listItem.onclick = () => showAnswerForm(doc.id, data.question);
+                    unansweredQuestionsList.appendChild(listItem);
+                });
+            } catch (error) {
+                console.error("Error getting documents: ", error);
+            }
+        }
+
+        // 回答フォームを表示する関数
+        window.showAnswerForm = function(questionId, questionText) {
+            document.getElementById('questionId').value = questionId;
+            document.getElementById('questionText').textContent = questionText;
+            document.getElementById('answerForm').style.display = 'block';
+        }
+
+        // 質問に回答する関数
+        window.submitAnswer = async function(event) {
+            event.preventDefault();
+            const questionId = document.getElementById('questionId').value;
+            const answer = document.getElementById('answer').value;
+
+            try {
+                await updateDoc(doc(db, 'questions', questionId), {
+                    answered: true,
+                    answer
+                });
+
+                document.getElementById('answerForm').reset(); // フォームをリセット
+                showPage('homePage'); // ホームページに移動
+                loadAnsweredQuestions(); // 回答済みの質問を更新
+            } catch (error) {
+                console.error("Error updating document: ", error);
+            }
+        }
+
+        // ページロード時に回答済み質問を読み込む
+        window.onload = () => {
+            showPage('homePage');
+            loadAnsweredQuestions();
+        }
+    </script>
+    <style>
+        .page { display: none; }
+    </style>
+</head>
+<body>
+    <div id="homePage" class="page">
+        <h1>質問サイト</h1>
+        <button onclick="showPage('askPage')">質問する</button>
+        <button onclick="showPage('answerPage'); loadUnansweredQuestions();">回答する</button>
+        <h2>回答済み質問一覧</h2>
+        <ul id="answeredQuestionsList"></ul>
+    </div>
+
+    <div id="askPage" class="page">
+        <h1>質問する</h1>
+        <form id="askForm" onsubmit="submitQuestion(event)">
+            <label for="grade">学年:</label>
+            <input type="text" id="grade" name="grade"><br><br>
+
+            <label for="department">学科:</label>
+            <input type="text" id="department" name="department"><br><br>
+
+            <label for="subject">科目:</label>
+            <input type="text" id="subject" name="subject"><br><br>
+
+            <label for="question">質問内容:</label><br>
+            <textarea id="question" name="question" rows="4" cols="50"></textarea><br><br>
+
+            <button type="submit">送信</button>
+            <button type="button" onclick="showPage('homePage')">戻る</button>
+        </form>
+    </div>
+
+    <div id="answerPage" class="page">
+        <h1>回答する</h1>
+        <ul id="unansweredQuestionsList"></ul>
+        <div id="answerForm" style="display:none;">
+            <h2 id="questionText"></h2>
+            <form onsubmit="submitAnswer(event)">
+                <input type="hidden" id="questionId">
+                <label for="answer">回答:</label><br>
+                <textarea id="answer" name="answer" rows="4" cols="50"></textarea><br><br>
+                <button type="submit">送信</button>
+            </form>
+        </div>
+        <button onclick="showPage('homePage')">ホームに戻る</button>
+    </div>
+</body>
+</html>
